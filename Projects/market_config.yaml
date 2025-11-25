@@ -1,0 +1,15 @@
+# Market Report configuration
+sold_date_column: CloseDate
+sold_price_column: ClosePrice
+psf_column: PricePerSquareFoot
+status_column: Standard Status
+listingid_column: Listing ID
+address_column: Property Address
+living_area_column: Living Area
+year_built_column: Year Built
+lot_size_column: Lot Size
+zip_column: ZipCode
+bedrooms_column: Bedrooms
+lat_column: Latitude
+lon_column: Longitude
+output_dir: market_outputs

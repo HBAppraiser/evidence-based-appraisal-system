@@ -1,0 +1,7 @@
+.venv/
+out/
+out_test/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd

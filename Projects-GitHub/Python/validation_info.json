@@ -1,0 +1,103 @@
+{
+  "date_of_value": "2025-11-01T00:00:00",
+  "earliest_sale": "2025-08-01T00:00:00",
+  "latest_sale": "2025-10-01T00:00:00",
+  "actual_coverage_months": 3.0223390275952693,
+  "valid_periods": [
+    {
+      "name": "0-3 months",
+      "months": 3,
+      "sales_count": 2,
+      "cutoff_date": "2025-08-02 00:00:00",
+      "status": "valid"
+    }
+  ],
+  "omitted_periods": [
+    {
+      "name": "4-6 months",
+      "months": 6,
+      "reason": "extends beyond data coverage (3.0 months)",
+      "sales_count": 3
+    },
+    {
+      "name": "7-9 months",
+      "months": 9,
+      "reason": "extends beyond data coverage (3.0 months)",
+      "sales_count": 3
+    },
+    {
+      "name": "9-12 months",
+      "months": 12,
+      "reason": "extends beyond data coverage (3.0 months)",
+      "sales_count": 3
+    },
+    {
+      "name": "0-6 months",
+      "months": 6,
+      "reason": "extends beyond data coverage (3.0 months)",
+      "sales_count": 3
+    },
+    {
+      "name": "0-12 months",
+      "months": 12,
+      "reason": "extends beyond data coverage (3.0 months)",
+      "sales_count": 3
+    },
+    {
+      "name": "0-18 months",
+      "months": 18,
+      "reason": "extends beyond data coverage (3.0 months)",
+      "sales_count": 3
+    },
+    {
+      "name": "0-24 months",
+      "months": 24,
+      "reason": "extends beyond data coverage (3.0 months)",
+      "sales_count": 3
+    },
+    {
+      "name": "0-36 months",
+      "months": 36,
+      "reason": "extends beyond data coverage (3.0 months)",
+      "sales_count": 3
+    }
+  ],
+  "trend_results": {
+    "slope_price": 152.44918360546484,
+    "daily_price_change": 152.44918360546484,
+    "monthly_price_change_pct": 1.819824764294255,
+    "slope_pricesf": 0.35959673361241257,
+    "market_trend": "INCREASING",
+    "r_squared": 0.9299400199933354
+  },
+  "subject_property": {
+    "address": "528 S Taper Ave",
+    "living_area": 951,
+    "bedrooms": 2,
+    "bathrooms": 1.0,
+    "garage": 1,
+    "year_built": 0
+  },
+  "report_info": {
+    "appraiser_name": "Craig Gilbert",
+    "appraiser_credentials": "N/A",
+    "file_number": "25-060_2025"
+  },
+  "thresholds": {
+    "time_adjustment_days": 30,
+    "sf_adjustment_pct": 15.0
+  },
+  "market_segment": {
+    "Property Type": "N/A",
+    "County": "N/A",
+    "City": "Compton",
+    "Zip": "90220",
+    "MLS Area": "N/A",
+    "Bedrooms": "N/A",
+    "Bathrooms": "N/A",
+    "Living Area Range": "N/A",
+    "Lot Size": "N/A",
+    "Transaction Type": "N/A",
+    "Date Range": "N/A"
+  }
+}

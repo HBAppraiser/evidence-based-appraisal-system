@@ -1,0 +1,4 @@
+Sale_Date,Sale_Price,Living_Area,Bedrooms,Bathrooms,Street_Number,Street_Name,DOM,CDOM,Garage,Price_Per_SF,Days_From_DOV
+2025-08-01,250000,1000,3,2,123,Main St,10,10,1,250.0,92
+2025-09-15,255000,975,3,2,789,Oak St,15,15,2,261.53846153846155,47
+2025-10-01,260000,950,2,1,456,Elm St,5,5,0,273.6842105263158,31

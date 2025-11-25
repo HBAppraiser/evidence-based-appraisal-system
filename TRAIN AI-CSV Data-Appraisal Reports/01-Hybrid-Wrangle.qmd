@@ -1,0 +1,393 @@
+---
+title: "Hybrid R & Python Data Wrangling"
+format: html
+editor: visual
+---
+
+# Combined R & Python Data Processing Pipeline
+
+This script demonstrates R and Python working together in the same Quarto document for real estate appraisal data analysis.
+
+## Setup
+
+```{r setup-r}
+# R packages
+pacman::p_load(
+  tidyverse, 
+  lubridate,
+  scales, 
+  tidygeocoder,
+  reticulate  # Enables R-Python communication
+)
+
+options(scipen = 999999)
+```
+
+```{python setup-python}
+# Python packages
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Access R objects via 'r' object
+# Access Python objects from R via 'py$' prefix
+```
+
+## Stage 1: R - Import & Initial Cleaning
+
+```{r import-r}
+# Import CSV with R's powerful date parsing
+sales_raw <- read_csv("Woodlands.csv",
+  col_types = cols(
+   Zip = col_character(),
+   APN = col_character(),
+   DateList = col_date(format = "%m/%d/%Y"),
+   DatePend = col_date(format = "%m/%d/%Y"),
+   DateSold = col_date(format = "%m/%d/%Y"),
+   Concessions = col_character(),
+   Pool = col_character(),
+   MLSNo = col_character()
+  ), 
+  show_col_types = FALSE
+)
+
+# Rename columns with tidyverse
+sales_r <- sales_raw %>% 
+  rename(
+    RemarksPub = `Public Remarks`,
+    RemarksConf = `Confidential Remarks 1000`
+  ) %>%
+  # Basic calculations with dplyr
+  mutate(
+    DOM = as.numeric(DatePend - DateList),
+    SPAP = (PriceSold / PriceList) - 1,
+    SPOP = (PriceSold / PriceOrig) - 1,
+    LTV = (FirstTD + SecondTD) / PriceSold,
+    TB = BA + (0.5 * PB),
+    # Create numeric date for modeling
+    DateSoldNum = as.numeric(DateSold - min(DateSold, na.rm = TRUE))
+  ) %>%
+  filter(DateSold > "2019-01-01")
+
+# Create ordered factor for condition
+sales_r$Condition <- factor(
+  sales_r$Condition, 
+  levels = c("Destroyed", "Fixer", "Average", "Good", "Excellent"),
+  ordered = TRUE
+)
+
+cat("✓ R Import Complete:", nrow(sales_r), "records\n")
+```
+
+## Stage 2: Python - Feature Engineering
+
+```{python feature-engineering}
+# Access R data in Python (automatic conversion)
+sales_py = r.sales_r.copy()
+
+# Python excels at complex feature engineering
+sales_py['DateSold'] = pd.to_datetime(sales_py['DateSold'])
+sales_py['DateList'] = pd.to_datetime(sales_py['DateList'])
+
+# Advanced features
+sales_py['Age'] = 2025 - sales_py['YrBlt']
+sales_py['PricePerSqFt'] = sales_py['PriceSold'] / sales_py['SqFt']
+sales_py['SaleYear'] = sales_py['DateSold'].dt.year
+sales_py['SaleMonth'] = sales_py['DateSold'].dt.month
+sales_py['SaleQuarter'] = sales_py['DateSold'].dt.quarter
+sales_py['IsRecent'] = (sales_py['DateSold'] >= '2024-01-01').astype(int)
+
+# Create price categories
+sales_py['PriceCategory'] = pd.cut(
+    sales_py['PriceSold'], 
+    bins=[0, 1000000, 1500000, 2000000, np.inf],
+    labels=['<1M', '1-1.5M', '1.5-2M', '>2M']
+)
+
+# Size categories
+sales_py['SizeCategory'] = pd.cut(
+    sales_py['SqFt'],
+    bins=[0, 1500, 2000, 2500, np.inf],
+    labels=['Small', 'Medium', 'Large', 'XLarge']
+)
+
+print(f"✓ Python Feature Engineering Complete: {len(sales_py)} records")
+print(f"  New columns added: Age, PricePerSqFt, SaleYear, SaleMonth, SaleQuarter")
+print(f"  Categories created: PriceCategory, SizeCategory")
+```
+
+## Stage 3: R - Statistical Analysis
+
+```{r r-statistics}
+# Bring Python data back to R
+sales_enhanced <- py$sales_py
+
+# R excels at statistical modeling
+# Linear regression for market trends
+lm_model <- lm(PriceSold ~ DateSoldNum + SqFt + BR + BA, data = sales_enhanced)
+
+# Summary statistics by condition
+condition_stats <- sales_enhanced %>%
+  group_by(Condition) %>%
+  summarise(
+    Count = n(),
+    AvgPrice = mean(PriceSold, na.rm = TRUE),
+    MedianPrice = median(PriceSold, na.rm = TRUE),
+    AvgPriceSF = mean(PricePerSqFt, na.rm = TRUE),
+    AvgDOM = mean(DOM, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  arrange(Condition)
+
+cat("\n✓ R Statistical Analysis Complete\n")
+print(condition_stats)
+
+# Model coefficients
+cat("\nLinear Model Coefficients:\n")
+print(summary(lm_model)$coefficients)
+```
+
+## Stage 4: Python - Machine Learning Prep
+
+```{python ml-prep}
+# Python for ML preprocessing
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+
+# Prepare ML dataset
+ml_data = sales_py.dropna(subset=['PriceSold', 'SqFt', 'BR', 'BA', 'Age', 'LotSF'])
+
+# Encode categorical variables
+le = LabelEncoder()
+ml_data['ConditionEncoded'] = le.fit_transform(ml_data['Condition'].astype(str))
+
+# Select features for modeling
+feature_cols = ['SqFt', 'BR', 'BA', 'Age', 'LotSF', 'ConditionEncoded', 'DOM']
+X = ml_data[feature_cols].copy()
+y = ml_data['PriceSold'].copy()
+
+# Scale features
+scaler = StandardScaler()
+X_scaled = pd.DataFrame(
+    scaler.fit_transform(X),
+    columns=X.columns,
+    index=X.index
+)
+
+print(f"✓ Python ML Preprocessing Complete")
+print(f"  Training samples: {len(X_scaled)}")
+print(f"  Features: {list(feature_cols)}")
+print(f"\nFeature Statistics:")
+print(X.describe().round(2))
+```
+
+## Stage 5: R - Geocoding
+
+```{r geocoding-r}
+# R's tidygeocoder is excellent for batch geocoding
+# Select subset for geocoding (first 20 for demo)
+to_geocode <- sales_enhanced %>%
+  filter(!is.na(Address), !is.na(City)) %>%
+  distinct(Address, City, State, Zip) %>%
+  slice_head(n = 20)
+
+# Geocode addresses (comment out if no API key)
+# geocoded <- to_geocode %>%
+#   geocode(
+#     street = Address,
+#     city = City,
+#     state = State,
+#     postalcode = Zip,
+#     method = 'census'  # Free, no API key needed
+#   )
+
+cat("✓ Geocoding setup complete\n")
+cat("  (Uncomment geocode() call to run with internet connection)\n")
+```
+
+## Stage 6: Python - Advanced Visualization
+
+```{python python-viz}
+# Python for advanced visualizations
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Get R data
+df = r.sales_enhanced
+
+fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+# Plot 1: Price distribution
+ax1 = axes[0, 0]
+df['PriceSold'].hist(bins=30, ax=ax1, color='skyblue', edgecolor='black')
+ax1.set_title('Price Distribution', fontsize=14, fontweight='bold')
+ax1.set_xlabel('Sale Price ($)')
+ax1.set_ylabel('Frequency')
+ax1.axvline(df['PriceSold'].median(), color='red', linestyle='--', 
+            linewidth=2, label=f"Median: ${df['PriceSold'].median():,.0f}")
+ax1.legend()
+
+# Plot 2: Price per SqFt by Year
+ax2 = axes[0, 1]
+yearly_avg = df.groupby('SaleYear')['PricePerSqFt'].mean()
+ax2.plot(yearly_avg.index, yearly_avg.values, marker='o', 
+         linewidth=2, markersize=8, color='darkgreen')
+ax2.set_title('Average $/SqFt by Year', fontsize=14, fontweight='bold')
+ax2.set_xlabel('Year')
+ax2.set_ylabel('Price per Sq Ft ($)')
+ax2.grid(True, alpha=0.3)
+
+# Plot 3: Condition vs Price
+ax3 = axes[1, 0]
+condition_prices = df.groupby('Condition')['PriceSold'].apply(list)
+ax3.boxplot([condition_prices[c] for c in condition_prices.index], 
+            labels=condition_prices.index)
+ax3.set_title('Price Distribution by Condition', fontsize=14, fontweight='bold')
+ax3.set_xlabel('Condition')
+ax3.set_ylabel('Sale Price ($)')
+ax3.tick_params(axis='x', rotation=45)
+
+# Plot 4: Size vs Price colored by condition
+ax4 = axes[1, 1]
+conditions = df['Condition'].unique()
+for condition in sorted(conditions):
+    subset = df[df['Condition'] == condition]
+    ax4.scatter(subset['SqFt'], subset['PriceSold'], 
+               label=condition, alpha=0.6, s=50)
+ax4.set_title('Price vs Size by Condition', fontsize=14, fontweight='bold')
+ax4.set_xlabel('Square Feet')
+ax4.set_ylabel('Sale Price ($)')
+ax4.legend(title='Condition', loc='upper left')
+ax4.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+
+print("✓ Python Visualization Complete")
+```
+
+## Stage 7: R - Beautiful Tables
+
+```{r r-tables}
+# R's gt package creates publication-quality tables
+library(gt)
+
+# Summary table
+summary_table <- sales_enhanced %>%
+  group_by(SaleYear, Condition) %>%
+  summarise(
+    Count = n(),
+    AvgPrice = mean(PriceSold, na.rm = TRUE),
+    AvgSize = mean(SqFt, na.rm = TRUE),
+    AvgDOM = mean(DOM, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  filter(SaleYear >= 2023)
+
+summary_table %>%
+  gt() %>%
+  tab_header(
+    title = "Sales Summary by Year and Condition",
+    subtitle = "Recent Market Activity"
+  ) %>%
+  fmt_currency(
+    columns = AvgPrice,
+    decimals = 0
+  ) %>%
+  fmt_number(
+    columns = c(AvgSize, AvgDOM),
+    decimals = 1
+  ) %>%
+  cols_label(
+    SaleYear = "Year",
+    Condition = "Condition",
+    Count = "Sales",
+    AvgPrice = "Avg Price",
+    AvgSize = "Avg SqFt",
+    AvgDOM = "Avg DOM"
+  ) %>%
+  tab_style(
+    style = cell_fill(color = "lightblue"),
+    locations = cells_body(
+      columns = AvgPrice,
+      rows = AvgPrice > median(summary_table$AvgPrice)
+    )
+  ) %>%
+  tab_source_note("Source: MLS Data Analysis")
+
+cat("\n✓ R Table Creation Complete\n")
+```
+
+## Stage 8: Save Processed Data
+
+```{r save-r-format}
+# Save in R format (.rds) - preserves data types perfectly
+write_rds(sales_enhanced, "sales_enhanced.rds")
+cat("✓ Saved R format: sales_enhanced.rds\n")
+```
+
+```{python save-python-format}
+# Save in Python format (.parquet) - efficient and widely compatible
+sales_py.to_parquet("sales_enhanced.parquet", index=False)
+print("✓ Saved Python format: sales_enhanced.parquet")
+
+# Also save as CSV for universal compatibility
+sales_py.to_csv("sales_enhanced.csv", index=False)
+print("✓ Saved CSV format: sales_enhanced.csv")
+```
+
+## Final Summary
+
+```{r final-summary}
+cat("\n" + paste(rep("=", 60), collapse="") + "\n")
+cat("DATA WRANGLING PIPELINE COMPLETE\n")
+cat(paste(rep("=", 60), collapse="") + "\n\n")
+
+cat("R Contributions:\n")
+cat("  • Data import with automatic date parsing\n")
+cat("  • Tidyverse data manipulation (dplyr, tidyr)\n")
+cat("  • Statistical modeling (lm, glm)\n")
+cat("  • Beautiful tables (gt)\n")
+cat("  • Geocoding (tidygeocoder)\n\n")
+
+cat("Python Contributions:\n")
+cat("  • Advanced feature engineering\n")
+cat("  • Machine learning preprocessing\n")
+cat("  • Complex visualizations (matplotlib, seaborn)\n")
+cat("  • Categorical encoding\n")
+cat("  • Efficient data storage (parquet)\n\n")
+
+cat("Final Dataset:\n")
+cat("  Records:", nrow(sales_enhanced), "\n")
+cat("  Columns:", ncol(sales_enhanced), "\n")
+cat("  Date Range:", format(min(sales_enhanced$DateSold), "%Y-%m-%d"), 
+    "to", format(max(sales_enhanced$DateSold), "%Y-%m-%d"), "\n")
+cat("  Avg Price:", scales::dollar(mean(sales_enhanced$PriceSold, na.rm = TRUE)), "\n")
+```
+
+## Key Takeaways
+
+**Why use both R & Python together?**
+
+1. **R Strengths:**
+   - Statistical analysis & modeling
+   - Beautiful ggplot2 visualizations
+   - Tidyverse data manipulation
+   - Publication-quality tables (gt)
+   - Factor handling & date parsing
+
+2. **Python Strengths:**
+   - Machine learning (scikit-learn)
+   - Deep learning (TensorFlow, PyTorch)
+   - Web scraping & APIs
+   - Advanced feature engineering
+   - Large-scale data processing
+
+3. **Seamless Integration:**
+   - Share data between languages instantly
+   - Use `r.object_name` in Python to access R objects
+   - Use `py$object_name` in R to access Python objects
+   - No file I/O needed for data transfer
+
+**Result:** Best of both worlds in a single analysis pipeline!

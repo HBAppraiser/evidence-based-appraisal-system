@@ -1,0 +1,5 @@
+CloseDate,ClosePrice,PricePerSquareFoot,Standard Status,Listing ID,Property Address,Living Area,Year Built,Lot Size,ZipCode,Bedrooms,Latitude,Longitude
+2025-06-15,1450000,820,Closed,P1,123 Example St,1760,1952,6500,90004,3,34.078,-118.315
+2025-07-02,1625000,870,Closed,P2,456 Sample Ave,1870,1938,7200,90004,3,34.071,-118.323
+2025-07-28,1750000,910,Pending,P3,789 Test Blvd,1920,1941,6800,90004,4,34.074,-118.311
+2025-08-10,1390000,780,Active,SUBJECT,Subject Property,1780,1948,6100,90004,3,34.076,-118.318

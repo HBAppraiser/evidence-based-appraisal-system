@@ -1,0 +1,21 @@
+{
+  "project_name": "Example Project",
+  "file_number": "EX-000",
+  "appraiser_name": "Craig Gilbert",
+  "report_date": "2025-11-01",
+  "effective_date": "2025-11-01",
+  "address": "528 S Taper Ave",
+  "filter_city": "Compton",
+  "filter_state": "CA",
+  "filter_zip": "90220",
+  "living_area": "951",
+  "bedrooms_total": "2",
+  "bathrooms_total": "1",
+  "year_built": "1950",
+  "garage_spaces": "1",
+  "csv_path": "2025 Sold data for Stats_Full (30).csv",
+  "adjustment_threshold": "15",
+  "time_threshold": "30",
+  "include_charts": true,
+  "create_pdf": true
+}
