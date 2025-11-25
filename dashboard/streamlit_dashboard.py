@@ -127,47 +127,71 @@ with st.sidebar:
     file_number = st.text_input("File Number", "25-060_2025")
     client_name = st.text_input("Client Name", "Katherine Hinton, esq")
 
+# Helper function for column detection
+def find_column(df, candidates):
+    """Find the first matching column by name (case-insensitive)"""
+    lower_map = {c.lower().strip().replace(' ', ''): c for c in df.columns}
+    for name in candidates:
+        key = name.lower().strip().replace(' ', '')
+        if key in lower_map:
+            return lower_map[key]
+    return None
+
 # Main content area
 if uploaded_file is not None:
     # Load data
     try:
         df = pd.read_csv(uploaded_file)
         
-        # Standardize column names
-        df.columns = df.columns.str.lower().str.replace(' ', '_')
+        # Detect columns using robust matching
+        price_candidates = ["Sale Price", "ClosePrice", "Close Price", "PriceSold", "SalePrice", "Price"]
+        date_candidates = ["Sale Date", "CloseDate", "Close Date", "DateSold", "SaleDate", "Date"]
+        area_candidates = ["LivingArea", "Living Area", "GLA", "Sqft", "SF Bldg", "Building SF", "SQFT", "Sq Ft"]
         
-        # Detect date and price columns
-        date_cols = [col for col in df.columns if any(x in col for x in ['close', 'sale', 'date'])]
-        price_cols = [col for col in df.columns if any(x in col for x in ['close', 'sale', 'price']) and 'per' not in col]
-        area_cols = [col for col in df.columns if any(x in col for x in ['living', 'area', 'gla', 'sqft'])]
+        price_col = find_column(df, price_candidates)
+        date_col = find_column(df, date_candidates)
+        area_col = find_column(df, area_candidates)
         
-        if date_cols and price_cols and area_cols:
-            # Parse dates
-            df[date_cols[0]] = pd.to_datetime(df[date_cols[0]], errors='coerce')
+        if date_col and price_col and area_col:
+            # Parse dates - normalize to remove time component
+            df[date_col] = pd.to_datetime(df[date_col], errors='coerce').dt.normalize()
             
             # Filter data
             df_filtered = df[
-                (df[date_cols[0]].notna()) &
-                (df[price_cols[0]].notna()) &
-                (df[area_cols[0]].notna()) &
-                (df[price_cols[0]] > 0) &
-                (df[area_cols[0]] > 0)
+                (df[date_col].notna()) &
+                (df[price_col].notna()) &
+                (df[area_col].notna()) &
+                (pd.to_numeric(df[price_col], errors='coerce') > 0) &
+                (pd.to_numeric(df[area_col], errors='coerce') > 0)
             ].copy()
             
-            # Calculate days from effective date
-            df_filtered['days_from_effective'] = (pd.to_datetime(effective_date) - df_filtered[date_cols[0]]).dt.days
+            # Convert to numeric
+            df_filtered[price_col] = pd.to_numeric(df_filtered[price_col], errors='coerce')
+            df_filtered[area_col] = pd.to_numeric(df_filtered[area_col], errors='coerce')
+            
+            # Calculate days from effective date - convert effective_date to datetime64
+            effective_dt = pd.to_datetime(effective_date).normalize()
+            df_filtered['days_from_effective'] = (effective_dt - df_filtered[date_col]).dt.days
+            
+            # Drop rows with invalid days calculation
+            df_filtered = df_filtered[df_filtered['days_from_effective'].notna()].copy()
+            df_filtered['days_from_effective'] = df_filtered['days_from_effective'].astype(int)
             
             # Apply filters
             df_filtered = df_filtered[
                 (df_filtered['days_from_effective'] >= 0) &
                 (df_filtered['days_from_effective'] <= max_days_old) &
-                (df_filtered[area_cols[0]] >= min_living_area) &
-                (df_filtered[area_cols[0]] <= max_living_area)
+                (df_filtered[area_col] >= min_living_area) &
+                (df_filtered[area_col] <= max_living_area)
             ]
             
             # Calculate price per SF
-            df_filtered['price_per_sf'] = df_filtered[price_cols[0]] / df_filtered[area_cols[0]]
+            df_filtered['price_per_sf'] = df_filtered[price_col] / df_filtered[area_col]
             
+            # Store column names for later use
+            st.session_state.price_col = price_col
+            st.session_state.date_col = date_col
+            st.session_state.area_col = area_col
             st.session_state.data = df_filtered
             
             # Display summary metrics
@@ -179,7 +203,7 @@ if uploaded_file is not None:
                 st.metric("Total Sales", len(df_filtered))
             
             with col2:
-                median_price = df_filtered[price_cols[0]].median()
+                median_price = df_filtered[price_col].median()
                 st.metric("Median Sale Price", f"${median_price:,.0f}")
             
             with col3:
@@ -204,9 +228,12 @@ if uploaded_file is not None:
             with tab1:
                 st.subheader("Price Trend Analysis")
                 
+                price_col = st.session_state.price_col
+                date_col = st.session_state.date_col
+                
                 # Calculate linear regression
                 x = df_filtered['days_from_effective'].values
-                y = df_filtered[price_cols[0]].values
+                y = df_filtered[price_col].values
                 slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
                 line = slope * x + intercept
                 
@@ -225,9 +252,9 @@ if uploaded_file is not None:
                 
                 # Plot
                 fig, ax = plt.subplots(figsize=(12, 6))
-                ax.scatter(df_filtered[date_cols[0]], df_filtered[price_cols[0]], 
+                ax.scatter(df_filtered[date_col], df_filtered[price_col], 
                           alpha=0.6, s=100, c='#3498db', edgecolors='black', linewidth=0.5)
-                ax.plot(df_filtered[date_cols[0]], line, 'r-', linewidth=2, label='Trend Line')
+                ax.plot(df_filtered[date_col], line, 'r-', linewidth=2, label='Trend Line')
                 
                 ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
                 ax.grid(True, alpha=0.3, linestyle='--')
@@ -261,15 +288,17 @@ if uploaded_file is not None:
             with tab2:
                 st.subheader("Price Distributions")
                 
+                price_col = st.session_state.price_col
+                
                 col1, col2 = st.columns(2)
                 
                 with col1:
                     # Sale Price Distribution
                     fig, ax = plt.subplots(figsize=(8, 6))
-                    ax.hist(df_filtered[price_cols[0]], bins=15, color='#3498db', alpha=0.7, edgecolor='black')
+                    ax.hist(df_filtered[price_col], bins=15, color='#3498db', alpha=0.7, edgecolor='black')
                     
-                    mean_price = df_filtered[price_cols[0]].mean()
-                    median_price = df_filtered[price_cols[0]].median()
+                    mean_price = df_filtered[price_col].mean()
+                    median_price = df_filtered[price_col].median()
                     
                     ax.axvline(mean_price, color='red', linestyle='--', linewidth=2, label=f'Mean: ${mean_price:,.0f}')
                     ax.axvline(median_price, color='green', linestyle='--', linewidth=2, label=f'Median: ${median_price:,.0f}')
@@ -311,16 +340,19 @@ if uploaded_file is not None:
             with tab3:
                 st.subheader("Living Area vs Sale Price")
                 
+                price_col = st.session_state.price_col
+                area_col = st.session_state.area_col
+                
                 # Regression
-                x_area = df_filtered[area_cols[0]].values
-                y_price = df_filtered[price_cols[0]].values
+                x_area = df_filtered[area_col].values
+                y_price = df_filtered[price_col].values
                 slope_area, intercept_area, r_value_area, _, _ = stats.linregress(x_area, y_price)
                 line_area = slope_area * x_area + intercept_area
                 
                 fig, ax = plt.subplots(figsize=(12, 6))
-                ax.scatter(df_filtered[area_cols[0]], df_filtered[price_cols[0]],
+                ax.scatter(df_filtered[area_col], df_filtered[price_col],
                           alpha=0.6, s=100, c='#9b59b6', edgecolors='black', linewidth=0.5)
-                ax.plot(df_filtered[area_cols[0]], line_area, 'r-', linewidth=2, label='Regression Line')
+                ax.plot(df_filtered[area_col], line_area, 'r-', linewidth=2, label='Regression Line')
                 
                 # Add subject
                 ax.scatter([subject_living_area], [subject_value_estimate],
@@ -368,13 +400,17 @@ if uploaded_file is not None:
                 with col2:
                     show_rows = st.selectbox("Show rows", [10, 25, 50, 100, "All"])
                 
+                price_col = st.session_state.price_col
+                date_col = st.session_state.date_col
+                area_col = st.session_state.area_col
+                
                 # Filter by search
                 display_df = df_filtered.copy()
                 if search:
                     display_df = display_df[display_df.astype(str).apply(lambda x: x.str.contains(search, case=False, na=False)).any(axis=1)]
                 
                 # Select columns to display
-                display_cols = [date_cols[0], price_cols[0], area_cols[0], 'price_per_sf', 'days_from_effective']
+                display_cols = [date_col, price_col, area_col, 'price_per_sf', 'days_from_effective']
                 if 'bedrooms' in df_filtered.columns:
                     display_cols.append('bedrooms')
                 if 'bathrooms' in df_filtered.columns:
@@ -384,9 +420,9 @@ if uploaded_file is not None:
                 
                 # Rename for display
                 display_df = display_df.rename(columns={
-                    date_cols[0]: 'Sale Date',
-                    price_cols[0]: 'Sale Price',
-                    area_cols[0]: 'Living Area',
+                    date_col: 'Sale Date',
+                    price_col: 'Sale Price',
+                    area_col: 'Living Area',
                     'price_per_sf': 'Price/SF',
                     'days_from_effective': 'Days Old'
                 })
@@ -407,23 +443,26 @@ if uploaded_file is not None:
                 )
             
             with tab5:
-                st.subheader("Machine Learning Prediction")
+                st.subheader("Machine Learning Validation")
                 
                 from sklearn.ensemble import RandomForestRegressor
                 from sklearn.model_selection import train_test_split
                 
+                price_col = st.session_state.price_col
+                area_col = st.session_state.area_col
+                
                 # Prepare features
-                feature_cols = [area_cols[0], 'days_from_effective']
+                feature_cols = [area_col, 'days_from_effective']
                 if 'bedrooms' in df_filtered.columns:
                     feature_cols.append('bedrooms')
                 if 'bathrooms' in df_filtered.columns:
                     feature_cols.append('bathrooms')
                 
-                ml_data = df_filtered[feature_cols + [price_cols[0]]].dropna()
+                ml_data = df_filtered[feature_cols + [price_col]].dropna()
                 
                 if len(ml_data) >= 10:
                     X = ml_data[feature_cols]
-                    y = ml_data[price_cols[0]]
+                    y = ml_data[price_col]
                     
                     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
                     
@@ -435,7 +474,7 @@ if uploaded_file is not None:
                     
                     # Predict subject value
                     subject_features = pd.DataFrame({
-                        area_cols[0]: [subject_living_area],
+                        area_col: [subject_living_area],
                         'days_from_effective': [0]
                     })
                     
